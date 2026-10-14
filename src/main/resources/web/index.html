@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="app-token" content="{{TOKEN}}">
+  <title>PPT Format Converter · V1.0</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><div class="brand"><span class="logo">P</span><strong>PPT Format Converter</strong><span class="version">V1.0</span></div><span class="local"><i></i>本机离线处理</span></header>
+  <main>
+    <section class="intro"><p class="eyebrow">给内容更宽的舞台</p><h1>从 4:3，轻松走向 16:9。</h1><p>保留原高度与对象尺寸，将内容水平居中。你的文件始终留在这台电脑上。</p></section>
+    <section class="workspace" aria-label="PPT 转换">
+      <div class="upload-panel">
+        <div class="section-title"><span class="step">01</span><h2>添加演示文稿</h2></div>
+        <label class="dropzone" id="dropzone" for="file-input" tabindex="0"><span class="upload-icon" aria-hidden="true">↑</span><strong>点击选择或拖入 PPT 文件</strong><span>支持多个 .pptx · 单个 ≤ 128 MB</span><span class="select-label">选择文件</span></label>
+        <input id="file-input" type="file" accept=".pptx" multiple>
+        <div class="rules"><h3>转换规则</h3><div><span>页面比例</span><strong>4:3 → 16:9</strong></div><div><span>内容布局</span><strong>原尺寸 · 水平居中</strong></div><div><span>指定字体</span><strong>微软雅黑 → Arial</strong></div></div>
+        <p class="note">非 4:3 文件保留原尺寸，仅替换指定字体。每批最多 20 个文件，总计 ≤ 256 MB。</p>
+        <button id="convert" class="primary" disabled>开始转换</button>
+      </div>
+      <div class="results-panel">
+        <div class="section-title"><span class="step">02</span><h2>转换与下载</h2><span id="count" class="count">0 个文件</span></div>
+        <div id="message" role="alert" hidden></div>
+        <div id="empty" class="empty"><div class="page-preview"><span>4:3</span><b>→</b><span>16:9</span></div><h3>准备好你的下一份演示</h3><p>添加文件后，在这里查看进度和转换结果。</p></div>
+        <div id="files" class="file-list" aria-live="polite"></div>
+        <div id="summary" class="summary" hidden></div>
+        <div class="actions"><button id="download-all" class="primary" hidden>下载全部成功结果（ZIP）</button><button id="download-log" class="secondary" hidden>下载日志</button><button id="reset" class="secondary" hidden>开始新批次</button></div>
+      </div>
+    </section>
+    <aside class="compatibility"><strong>字体与兼容性提示</strong><p>Arial 的中文字形由 Windows 回退字体提供，文本换行可能变化。图表、表格、动画等原始数据会尽量保留；背景填充和运动路径动画建议在 PowerPoint 中复查。加密、数字签名和 Strict OOXML 文件需先另存为标准 .pptx。</p></aside>
+    <footer><span>原文件不覆盖 · 输出可编辑 PPTX</span><span>退出应用前请下载结果；关闭浏览器不会自动停止程序。</span></footer>
+  </main>
+</body></html>

@@ -1,0 +1,2 @@
+6c5564a85c0c10c7b45aa43fb08acd2f8a87d11daf09dfa31192586d5d8a96be  PPTFormatConverter-1.0-Windows-x64.zip
+d1fb0e6d9d8040453302b07d86e15b8ad7b270550dbf2c55b5c10eadfa7d7559  PPTFormatConverter-1.0-Source.zip
