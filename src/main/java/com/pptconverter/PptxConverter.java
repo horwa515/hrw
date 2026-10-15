@@ -77,7 +77,8 @@ public final class PptxConverter {
             if (sizes.getLength() != 1) throw new IOException("无法检测页面尺寸。");
             Element size = (Element)sizes.item(0);
             width = positive(size.getAttribute("cx")); height = positive(size.getAttribute("cy"));
-            resized = Math.abs((double)width / height / (4.0 / 3.0) - 1) <= 0.005;
+            double ratio=(double)width/height;
+            resized = Math.abs(ratio/(4.0/3.0)-1)<=0.005 || Math.abs(ratio/(13.0/9.0)-1)<=0.005;
             newWidth = resized ? Math.round(height * 16.0 / 9.0) : width;
             long delta = Math.round((newWidth - width) / 2.0);
             if (resized) {
@@ -85,7 +86,7 @@ public final class PptxConverter {
                 size.setAttribute("type", "screen16x9");
             } else {
                 warnings.add("输入比例为 " + String.format(Locale.ROOT, "%.4f", (double)width / height) +
-                    "，不是 4:3，保留页面尺寸；仍执行字体替换。");
+                    "，不属于 4:3 或公司常见 1.4444，保留页面尺寸；仍执行字体调整。");
             }
             boolean advanced = false, backgrounds = false, customCoordinates = false, smartArt = false, legacy = false, embeddedFonts = false, externalLinks = false;
             long[] expanded = {0};
@@ -102,7 +103,7 @@ public final class PptxConverter {
                         if (xml) {
                             byte[] original = readBounded(zip.getInputStream(entry), MAX_XML, expanded);
                             Document part = name.equals("ppt/presentation.xml") ? doc : parse(original);
-                            int count = replaceFonts(part);
+                            int count = FontNormalizer.apply(part);
                             fonts += count;
                             boolean changed = count > 0 || (resized && name.equals("ppt/presentation.xml"));
                             if (resized && isSlidePart(part)) {
@@ -145,7 +146,8 @@ public final class PptxConverter {
             if (embeddedFonts) warnings.add("嵌入字体资源及其名称绑定保留；替换为 Arial 的文本不再使用原微软雅黑嵌入资源，显示依赖目标系统字体。");
             if (externalLinks) warnings.add("检测到外部链接：链接原样保留，不下载外部内容；链接媒体或数据源在离线电脑上可能不可用。");
             if (customCoordinates) warnings.add("检测到动画运动路径：动画 XML 保留，按页面比例定义的运动路径可能改变轨迹，请人工检查。");
-            if (fonts > 0) warnings.add("Arial 不包含完整中文字形；中文将由系统回退字体显示，换行、字宽可能变化，请在目标 Windows 上检查。");
+            if (fonts > 0) warnings.add("可编辑中文设为黑体（SimHei），英文仅将微软雅黑改为 Arial；请确认系统已安装黑体，字体改变可能影响换行。");
+            warnings.add("图片中的文字及嵌入工作簿/OLE 内部文字不执行 OCR 或改写；原始二进制对象保持不变。");
             // No REPLACE_EXISTING: an existing output is never overwritten.
             Files.move(temporary, output);
             progress.accept(100);
@@ -234,24 +236,6 @@ public final class PptxConverter {
             }
         }
         return false;
-    }
-
-    private static int replaceFonts(Document doc) {
-        int count = 0;
-        NodeList all = doc.getElementsByTagName("*");
-        for (int i = 0; i < all.getLength(); i++) {
-            Element e = (Element)all.item(i);
-            // Resource names must continue to match the retained embedded font binaries.
-            if (P.equals(e.getNamespaceURI()) && e.getLocalName().equals("font") &&
-                e.getParentNode() instanceof Element && ((Element)e.getParentNode()).getLocalName().equals("embeddedFont")) continue;
-            if (e.hasAttribute("typeface")) {
-                String font = e.getAttribute("typeface");
-                if (font.equalsIgnoreCase("Microsoft YaHei") || font.equals("微软雅黑")) {
-                    e.setAttribute("typeface", "Arial"); count++;
-                }
-            }
-        }
-        return count;
     }
 
     static Document parse(byte[] xml) throws Exception {

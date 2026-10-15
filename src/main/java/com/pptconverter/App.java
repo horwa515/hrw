@@ -24,6 +24,7 @@ public final class App implements AutoCloseable {
     private final ScheduledExecutorService cleanup = Executors.newSingleThreadScheduledExecutor();
     private static final long MAX_BATCH = 256L * 1024 * 1024;
     private volatile boolean closed;
+    private final ConversionService converter;
 
     static final class Item {
         final String id = UUID.randomUUID().toString(), name;
@@ -31,6 +32,7 @@ public final class App implements AutoCloseable {
         volatile String status = "queued", error = "";
         volatile int progress;
         volatile PptxConverter.Result result;
+        volatile boolean outputEncrypted;
         Item(String name, Path directory) {
             this.name = name; input = directory.resolve(id + ".pptx");
             output = directory.resolve(id + "-16x9.pptx");
@@ -53,6 +55,10 @@ public final class App implements AutoCloseable {
     }
 
     public App(int port, Path storage) throws IOException {
+        this(port,storage,false);
+    }
+    public App(int port, Path storage, boolean enhanced) throws IOException {
+        converter=new ConversionService(enhanced);
         root = Files.createTempDirectory(storage, "ppt-format-converter-");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 16);
         server.createContext("/", this::handle);
@@ -116,7 +122,10 @@ public final class App implements AutoCloseable {
             if (path.equals("/favicon.ico") && method.equals("GET")) { x.sendResponseHeaders(204, -1); return; }
             if (path.equals("/") && method.equals("GET")) {
                 byte[] page = resource("index.html");
-                send(x, 200, "text/html; charset=utf-8", new String(page, StandardCharsets.UTF_8).replace("{{TOKEN}}", token).getBytes(StandardCharsets.UTF_8));
+                String html=new String(page,StandardCharsets.UTF_8).replace("{{TOKEN}}",token)
+                    .replace("{{EDITION}}",converter.enhanced()?"V1.1 增强版":"V1.1 基础版")
+                    .replace("{{PASSWORD_INFO}}",converter.enhanced()?"PPT 密码自动处理：使用 3609 打开加密输入，所有输出设置打开密码 3609。":"PPT 密码手动处理：有打开密码的文件，请先手动去密；输出如需密码，请在 PowerPoint 中设置。");
+                send(x, 200, "text/html; charset=utf-8", html.getBytes(StandardCharsets.UTF_8));
                 return;
             }
             if (Arrays.asList("/app.js", "/style.css").contains(path) && method.equals("GET")) {
@@ -230,11 +239,13 @@ public final class App implements AutoCloseable {
     private void convert(Batch b, Item item) {
         item.status = "converting"; b.log("开始转换：" + item.name);
         try {
-            item.result = new PptxConverter().convert(item.input, item.output, p -> item.progress = p);
+            item.result = converter.convert(item.input, item.output, p -> item.progress = p);
+            item.outputEncrypted=converter.enhanced();
             PptxConverter.Result r = item.result;
             b.log("完成：" + item.name + "；尺寸 " + r.oldWidth() + " × " + r.height() + " → " + r.newWidth() + " × " + r.height() +
                 " EMU；平移对象 " + r.movedObjects() + "；字体替换 " + r.replacedFonts());
             r.warnings().forEach(w -> b.log("警告：" + item.name + "：" + w));
+            if(item.outputEncrypted)b.log("PPT 打开密码已自动设置为 3609："+item.name);
             item.status = "done";
         } catch (Exception e) {
             item.error = safeError(e); b.log("转换失败：" + item.name + "：" + item.error); item.status = "failed";
@@ -252,7 +263,8 @@ public final class App implements AutoCloseable {
             String state = i.status; // Volatile publication: result is set before done.
             s.append("{\"id\":").append(quote(i.id)).append(",\"name\":").append(quote(i.name))
              .append(",\"outputName\":").append(quote(i.outputName())).append(",\"status\":").append(quote(state))
-             .append(",\"progress\":").append(i.progress).append(",\"error\":").append(quote(i.error));
+             .append(",\"progress\":").append(i.progress).append(",\"error\":").append(quote(i.error))
+             .append(",\"outputEncrypted\":").append(i.outputEncrypted);
             if (i.result != null) {
                 PptxConverter.Result r = i.result;
                 s.append(",\"resized\":").append(r.resized()).append(",\"width\":").append(r.oldWidth())
@@ -318,16 +330,17 @@ public final class App implements AutoCloseable {
     }
 
     public static void main(String[] args) throws Exception {
-        int port = 0; boolean browser = true;
+        int port = 0; boolean browser = true, enhanced=false;
         for (int i = 0; i < args.length; i++) {
             if (args[i].equals("--no-browser")) browser = false;
+            else if(args[i].equals("--office-password"))enhanced=true;
             else if (args[i].equals("--port") && i + 1 < args.length) port = Integer.parseInt(args[++i]);
             else throw new IllegalArgumentException("用法：java -jar ppt-format-converter.jar [--port 端口] [--no-browser]");
         }
-        App app = new App(port, Paths.get(System.getProperty("java.io.tmpdir")));
+        App app = new App(port, Paths.get(System.getProperty("java.io.tmpdir")),enhanced);
         Runtime.getRuntime().addShutdownHook(new Thread(app::close)); app.start();
         URI url = URI.create("http://127.0.0.1:" + app.port() + "/");
-        System.out.println("PPT Format Converter V1.0\n请在本机浏览器打开：" + url + "\n关闭此窗口或按 Ctrl+C 退出；退出前请下载结果。");
+        System.out.println("PPT Format Converter V1.1 "+(enhanced?"增强版（PPT 打开密码 3609）":"基础版")+"\n请在本机浏览器打开：" + url + "\n关闭此窗口或按 Ctrl+C 退出；退出前请下载结果。");
         if (browser) {
             try {
                 String os = System.getProperty("os.name");

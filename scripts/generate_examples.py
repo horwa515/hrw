@@ -74,6 +74,9 @@ for s in slide2.shapes:
 prs.save(OUT / 'sample-4x3.pptx')
 prs.slide_width = Inches(40 / 3)
 prs.save(OUT / 'sample-16x9.pptx')
+prs.slide_width = Inches(13 * 7.5 / 9)
+prs.slides[0].shapes[0].text_frame.paragraphs[0].runs[0].text = 'PPT 转换示例 / 1.4444'
+prs.save(OUT / 'sample-company-1.4444.pptx')
 # Keep one corrupt input for failure-isolation tests.
 (OUT / 'invalid.pptx').write_bytes(b'This is deliberately not a PPTX file.\n')
 print('Generated sample-4x3.pptx, sample-16x9.pptx and invalid.pptx')

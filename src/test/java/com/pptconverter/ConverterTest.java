@@ -32,6 +32,8 @@ public final class ConverterTest {
             test("4:3 resize, centering and image/table/chart/group preservation", ConverterTest::geometry);
             test("layout/master inheritance remains valid", ConverterTest::inheritance);
             test("font aliases in slides, notes, charts and themes; other fonts unchanged", ConverterTest::fonts);
+            test("company 1.4444 and 4:3 presets with bounded tolerance", ConverterTest::companyAspect);
+            test("mixed Chinese/English fonts preserve text, styles and hyperlinks", ConverterTest::mixedFonts);
             test("16:9 dimensions and coordinates unchanged", () -> unchanged(Paths.get("examples/sample-16x9.pptx")));
             test("custom aspect dimensions and coordinates unchanged", ConverterTest::customAspect);
             test("corrupt input isolated, original untouched and temporary outputs removed", ConverterTest::corrupt);
@@ -100,6 +102,9 @@ public final class ConverterTest {
     // Compare all elements/attributes, allowing only the exact intended edits.
     private static void compareElements(Element a, Element b, long widthChange) {
         check(a.getTagName().equals(b.getTagName()), "Element changed");
+        if(PptxConverter.A.equals(a.getNamespaceURI()) && "p".equals(a.getLocalName())){
+            check(paragraphText(a).equals(paragraphText(b)),"Paragraph text/order changed");return;
+        }
         NamedNodeMap attributes = a.getAttributes();
         for (int j=0;j<attributes.getLength();j++) {
             Node attr=attributes.item(j); String expected=attr.getNodeValue();
@@ -124,8 +129,16 @@ public final class ConverterTest {
     }
     private static List<Element> children(Element e) {
         List<Element> elements=new ArrayList<>();
-        for(Node n=e.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element)elements.add((Element)n);
+        for(Node n=e.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element){
+            Element child=(Element)n;
+            if(PptxConverter.A.equals(child.getNamespaceURI()) && Arrays.asList("latin","ea","font").contains(child.getLocalName()))continue;
+            elements.add(child);
+        }
         return elements;
+    }
+    private static String paragraphText(Element p){
+        StringBuilder s=new StringBuilder();NodeList texts=p.getElementsByTagNameNS(PptxConverter.A,"t");
+        for(int i=0;i<texts.getLength();i++)s.append(texts.item(i).getTextContent());return s.toString();
     }
     private static void inheritance() throws Exception {
         Path out=output();convert(SAMPLE,out);Map<String,byte[]> before=parts(SAMPLE),after=parts(out);
@@ -133,7 +146,8 @@ public final class ConverterTest {
         check(slide.getElementsByTagNameNS(PptxConverter.A,"xfrm").getLength()==0,"Fixture must exercise inherited placeholders");
         check(PptxConverter.parse(after.get("ppt/slides/slide2.xml")).getElementsByTagNameNS(PptxConverter.A,"xfrm").getLength()==0,"Inheritance replaced unnecessarily");
         check(!Arrays.equals(before.get("ppt/slideMasters/slideMaster1.xml"),after.get("ppt/slideMasters/slideMaster1.xml")),"Master not shifted");
-        check(Arrays.equals(before.get("ppt/slideLayouts/slideLayout2.xml"),after.get("ppt/slideLayouts/slideLayout2.xml")),"Fully inherited layout should remain unchanged");
+        compareElements(PptxConverter.parse(before.get("ppt/slideLayouts/slideLayout2.xml")).getDocumentElement(),
+            PptxConverter.parse(after.get("ppt/slideLayouts/slideLayout2.xml")).getDocumentElement(),3048000);
         boolean explicitLayout=false;
         for(String name:before.keySet())if(name.startsWith("ppt/slideLayouts/") && name.endsWith(".xml")){
             Document layout=PptxConverter.parse(before.get(name));
@@ -148,15 +162,15 @@ public final class ConverterTest {
     }
     private static void fonts() throws Exception {
         Path themed=changed("ppt/theme/theme1.xml",d->first(d,PptxConverter.A,"latin").setAttribute("typeface","Microsoft YaHei"));
-        Path out=output();PptxConverter.Result r=convert(themed,out);int count=0;
+        Path out=output();PptxConverter.Result r=convert(themed,out);int count=0,black=0;
         for(Map.Entry<String, byte[]> e:parts(out).entrySet())if(e.getKey().startsWith("ppt/")&&e.getKey().endsWith(".xml")){
             Document d=PptxConverter.parse(e.getValue());NodeList all=d.getElementsByTagName("*");
             for(int i=0;i<all.getLength();i++){
                 String font=((Element)all.item(i)).getAttribute("typeface");
-                check(!font.equals("微软雅黑")&&!font.equalsIgnoreCase("Microsoft YaHei"),"Missed font alias");if(font.equals("Arial"))count++;
+                check(!font.equals("微软雅黑")&&!font.equalsIgnoreCase("Microsoft YaHei"),"Missed font alias");if(font.equals("Arial"))count++;if(font.equals("SimHei"))black++;
             }
         }
-        check(count>10 && r.replacedFonts()>10,"Fonts were not exercised");
+        check(count>0 && black>10 && r.replacedFonts()>10,"Latin and Chinese fonts were not exercised");
         String text=new String(parts(out).get("ppt/slides/slide1.xml"),StandardCharsets.UTF_8);
         check(text.contains("Times New Roman"),"Other font changed");
         check(r.warnings().stream().anyMatch(w->w.contains("中文")),"Fallback warning missing");
@@ -169,6 +183,35 @@ public final class ConverterTest {
     }
     private static void customAspect() throws Exception {
         unchanged(changed("ppt/presentation.xml",d->first(d,PptxConverter.P,"sldSz").setAttribute("cx","6858000")));
+    }
+    private static void companyAspect() throws Exception {
+        for(long width:new long[]{9906000,9905695,9144000,9950000}){
+            Path input=changed("ppt/presentation.xml",d->first(d,PptxConverter.P,"sldSz").setAttribute("cx",Long.toString(width)));
+            Path out=output();PptxConverter.Result r=convert(input,out);
+            check(r.resized() && r.newWidth()==12192000 && r.height()==6858000,"Supported ratio not converted");
+            Map<String,byte[]> a=parts(input),b=parts(out);
+            compareElements(PptxConverter.parse(a.get("ppt/slides/slide1.xml")).getDocumentElement(),PptxConverter.parse(b.get("ppt/slides/slide1.xml")).getDocumentElement(),r.newWidth()-width);
+        }
+        unchanged(changed("ppt/presentation.xml",d->first(d,PptxConverter.P,"sldSz").setAttribute("cx","9601200"))); // 1.4 is not a preset.
+    }
+    private static void mixedFonts() throws Exception {
+        String input="中文ABC 123，结束";
+        String xml="<a:p xmlns:a='"+PptxConverter.A+"' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'>"+
+            "<a:r><a:rPr sz='2400' b='1' i='1'><a:solidFill><a:srgbClr val='123456'/></a:solidFill><a:latin typeface='Times New Roman'/><a:ea typeface='宋体'/><a:hlinkClick r:id='rId7'/></a:rPr><a:t>"+input+"</a:t></a:r></a:p>";
+        Document d=PptxConverter.parse(xml.getBytes(StandardCharsets.UTF_8));FontNormalizer.apply(d);
+        check(paragraphText(d.getDocumentElement()).equals(input),"Mixed text changed");
+        NodeList runs=d.getElementsByTagNameNS(PptxConverter.A,"r");check(runs.getLength()==3,"Expected Chinese / Latin / Chinese runs");
+        for(int i=0;i<runs.getLength();i++){
+            Element run=(Element)runs.item(i),props=(Element)run.getElementsByTagNameNS(PptxConverter.A,"rPr").item(0);
+            Element latin=(Element)props.getElementsByTagNameNS(PptxConverter.A,"latin").item(0);
+            check(latin.getAttribute("typeface").equals(i==1?"Times New Roman":"SimHei"),"Wrong script font");
+            check(props.getAttribute("b").equals("1")&&props.getAttribute("i").equals("1")&&props.getAttribute("sz").equals("2400"),"Run styling lost");
+            check(((Element)props.getElementsByTagNameNS(PptxConverter.A,"hlinkClick").item(0)).getAttribute("r:id").equals("rId7"),"Hyperlink lost");
+            check(((Element)props.getElementsByTagNameNS(PptxConverter.A,"srgbClr").item(0)).getAttribute("val").equals("123456"),"Color lost");
+        }
+        Document alias=PptxConverter.parse(xml.replace("Times New Roman","Microsoft YaHei").getBytes(StandardCharsets.UTF_8));FontNormalizer.apply(alias);
+        check(((Element)((Element)alias.getElementsByTagNameNS(PptxConverter.A,"r").item(1)).getElementsByTagNameNS(PptxConverter.A,"latin").item(0)).getAttribute("typeface").equals("Arial"),"English YaHei not changed to Arial");
+        check(FontNormalizer.apply(alias)==0,"Font normalization is not repeatable");
     }
     private static void fails(Path source, Path out, String expected) throws Exception {
         byte[] original=Files.readAllBytes(source);boolean failed=false;

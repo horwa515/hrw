@@ -1,15 +1,16 @@
-# 程序下载
+# V1.1 新版下载
 
-**公司电脑已有 Java 8（例如 1.8.0_201）**：下载 **PPTFormatConverter-1.0-Windows-Java8.zip**（约 70 KB）。完整解压后进入 PPTFormatConverter-Java8 文件夹，双击 **Start.cmd**。无需安装或升级 Java，包含示例，功能不减少。
+两个 ZIP 的解压密码均为 **3609**，兼容公司现有 Windows 10 x64 / Java 8，无需升级 Java。
 
-**电脑没有 Java**：下载 **PPTFormatConverter-1.0-Windows-x64-Small.zip**（约 17 MB），完整解压后进入 PPTFormatConverter 文件夹，双击 **Start.cmd**。自带所需 Java 模块。
+| 下载包 | 大小 | 选择方法 |
+| --- | --- | --- |
+| [基础版 Basic](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.1-Java8-Basic-Password.zip) | 约 80 KB | PPT 去密码和输出加密码仍手动操作 |
+| [增强版 Enhanced](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.1-Java8-Enhanced-Password.zip) | 约 6.65 MB | 自动用 3609 打开加密输入，所有输出 PPT 自动设置打开密码 3609 |
 
-邮件附件编码后约 23.3 MB，通常适合 25 MB 邮件大小限制。不要同时附加原来的大包。
+两版都有：4:3 / 1.4444 → 16:9，原高度和对象尺寸不变、内容水平居中；可编辑中文设为黑体，英文中的微软雅黑改为 Arial。
 
-**PPTFormatConverter-1.0-Java-required.zip** 约 40 KB，工作电脑必须已有 Java 8+；不附带示例。
+完整解压后打开对应文件夹，双击 **Start.cmd**，在自动打开的页面上传 PPT 即可。PPT 的打开密码与 ZIP 的解压密码是两层独立密码，此处均按要求设为 3609。
 
-原来的 **PPTFormatConverter-1.0-Windows-x64.zip** 仍保留，但体积约 49 MB，不推荐用于邮件发送。
+点击 ZIP 文件后，可使用文件页右上角 **Download raw file** 下载。不要把整个仓库的 Code → Download ZIP 当作程序包。
 
-点击 ZIP 文件后，在文件页右上角点击 **Download raw file** 下载；不要下载整个 GitHub 仓库来代替这个离线程序包。
-
-PPTFormatConverter-1.0-Source.zip 是源码和构建脚本，提供给开发者。SHA256SUMS.txt 是下载包完整性校验文件。
+旧版 V1.0 文件保留供回退，不包含上述新规则。SHA256SUMS.txt 为下载文件校验清单。

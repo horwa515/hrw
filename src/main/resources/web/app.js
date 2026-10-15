@@ -43,7 +43,7 @@ function renderStatus(data) {
     if(!['done','failed'].includes(f.status)) { const bar=node('div','progress'),p=node('progress');p.max=100;p.value=f.progress;p.setAttribute('aria-label',`${f.name} 转换进度 ${f.progress}%`);bar.append(p);card.append(bar); }
     if(f.status==='done') {
       const toCm=n=>(n/360000).toFixed(2);
-      card.append(node('p','detail',`${toCm(f.width)} × ${toCm(f.height)} cm → ${toCm(f.newWidth)} × ${toCm(f.height)} cm · ${f.resized?'已扩展至 16:9':'原尺寸保留'} · 替换 ${f.fontReplacements} 处字体`));
+      card.append(node('p','detail',`${toCm(f.width)} × ${toCm(f.height)} cm → ${toCm(f.newWidth)} × ${toCm(f.height)} cm · ${f.resized?'已扩展至 16:9':'原尺寸保留'} · 字体调整 ${f.fontReplacements} 项${f.outputEncrypted?' · PPT 打开密码：3609':''}`));
       const btn=node('button','secondary download-one','下载 PPTX');btn.onclick=()=>download(`/api/batches/${batchId}/files/${f.id}/download`,f.outputName);card.append(btn);
     }
     if(f.error)card.append(node('p','detail',f.error));
