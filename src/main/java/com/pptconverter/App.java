@@ -10,6 +10,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** Loopback-only, dependency-free local application. */
 public final class App implements AutoCloseable {
@@ -72,7 +74,34 @@ public final class App implements AutoCloseable {
         }, 1, 1, TimeUnit.HOURS);
     }
 
-    private void handle(HttpExchange x) throws IOException {
+    /** Tracks response state without requiring HttpExchange.getResponseCode (Java 9+). */
+    private static final class TrackedExchange extends HttpExchange {
+        private final HttpExchange delegate;
+        private int responseCode = -1;
+        TrackedExchange(HttpExchange delegate) { this.delegate = delegate; }
+        public Headers getRequestHeaders() { return delegate.getRequestHeaders(); }
+        public Headers getResponseHeaders() { return delegate.getResponseHeaders(); }
+        public URI getRequestURI() { return delegate.getRequestURI(); }
+        public String getRequestMethod() { return delegate.getRequestMethod(); }
+        public HttpContext getHttpContext() { return delegate.getHttpContext(); }
+        public void close() { delegate.close(); }
+        public InputStream getRequestBody() { return delegate.getRequestBody(); }
+        public OutputStream getResponseBody() { return delegate.getResponseBody(); }
+        public void sendResponseHeaders(int code, long length) throws IOException {
+            responseCode = code; delegate.sendResponseHeaders(code, length);
+        }
+        public int getResponseCode() { return responseCode; }
+        public InetSocketAddress getRemoteAddress() { return delegate.getRemoteAddress(); }
+        public InetSocketAddress getLocalAddress() { return delegate.getLocalAddress(); }
+        public String getProtocol() { return delegate.getProtocol(); }
+        public Object getAttribute(String name) { return delegate.getAttribute(name); }
+        public void setAttribute(String name, Object value) { delegate.setAttribute(name, value); }
+        public void setStreams(InputStream in, OutputStream out) { delegate.setStreams(in, out); }
+        public HttpPrincipal getPrincipal() { return delegate.getPrincipal(); }
+    }
+
+    private void handle(HttpExchange original) throws IOException {
+        TrackedExchange x = new TrackedExchange(original);
         try {
             x.getResponseHeaders().set("Cache-Control", "no-store");
             x.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
@@ -90,7 +119,7 @@ public final class App implements AutoCloseable {
                 send(x, 200, "text/html; charset=utf-8", new String(page, StandardCharsets.UTF_8).replace("{{TOKEN}}", token).getBytes(StandardCharsets.UTF_8));
                 return;
             }
-            if (Set.of("/app.js", "/style.css").contains(path) && method.equals("GET")) {
+            if (Arrays.asList("/app.js", "/style.css").contains(path) && method.equals("GET")) {
                 send(x, 200, path.endsWith(".js") ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8", resource(path.substring(1))); return;
             }
             if (!path.startsWith("/api/") || !token.equals(x.getRequestHeaders().getFirst("X-App-Token"))) {
@@ -125,7 +154,7 @@ public final class App implements AutoCloseable {
             }
             if (segments.length == 5 && segments[4].equals("download") && method.equals("GET")) {
                 if (!b.complete()) { error(x, 409, "请等待所有文件转换完成。"); return; }
-                List<Item> successful = b.items.stream().filter(i -> i.status.equals("done")).toList();
+                List<Item> successful = b.items.stream().filter(i -> i.status.equals("done")).collect(Collectors.toList());
                 if (successful.isEmpty()) { error(x, 404, "此批次没有成功转换的文件。"); return; }
                 attachment(x, "converted-pptx.zip");
                 x.getResponseHeaders().set("Content-Type", "application/zip"); x.sendResponseHeaders(200, 0);
@@ -160,7 +189,7 @@ public final class App implements AutoCloseable {
         String name = "";
         String query = x.getRequestURI().getRawQuery();
         if (query != null) for (String field : query.split("&"))
-            if (field.startsWith("name=")) name = URLDecoder.decode(field.substring(5), StandardCharsets.UTF_8);
+            if (field.startsWith("name=")) name = URLDecoder.decode(field.substring(5), "UTF-8");
         name = name.replace('\\', '/'); name = name.substring(name.lastIndexOf('/') + 1);
         name = name.replaceAll("[\\p{Cntrl}<>:\"|?*]", "_");
         if (name.length() > 180 || name.length() <= 5 || !name.toLowerCase(Locale.ROOT).endsWith(".pptx")) {
@@ -241,9 +270,12 @@ public final class App implements AutoCloseable {
         StringBuilder s = new StringBuilder("\"");
         for (char c : value.toCharArray()) {
             switch (c) {
-                case '"' -> s.append("\\\""); case '\\' -> s.append("\\\\");
-                case '\n' -> s.append("\\n"); case '\r' -> s.append("\\r"); case '\t' -> s.append("\\t");
-                default -> { if (c < 32) s.append(String.format("\\u%04x", (int)c)); else s.append(c); }
+                case '"': s.append("\\\""); break;
+                case '\\': s.append("\\\\"); break;
+                case '\n': s.append("\\n"); break;
+                case '\r': s.append("\\r"); break;
+                case '\t': s.append("\\t"); break;
+                default: if (c < 32) s.append(String.format("\\u%04x", (int)c)); else s.append(c);
             }
         }
         return s.append('"').toString();
@@ -255,12 +287,16 @@ public final class App implements AutoCloseable {
     }
     private static byte[] resource(String name) throws IOException {
         try (InputStream in = App.class.getResourceAsStream("/web/" + name)) {
-            if (in == null) throw new IOException("缺少网页资源。"); return in.readAllBytes();
+            if (in == null) throw new IOException("缺少网页资源。");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192]; int n;
+            while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+            return out.toByteArray();
         }
     }
-    private static void attachment(HttpExchange x, String name) {
+    private static void attachment(HttpExchange x, String name) throws IOException {
         x.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"download\"; filename*=UTF-8''" +
-            URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20"));
+            URLEncoder.encode(name, "UTF-8").replace("+", "%20"));
     }
     private static void send(HttpExchange x, int status, String type, byte[] data) throws IOException {
         x.getResponseHeaders().set("Content-Type", type); x.sendResponseHeaders(status, data.length);
@@ -269,7 +305,7 @@ public final class App implements AutoCloseable {
     private static void json(HttpExchange x, int status, String text) throws IOException { send(x, status, "application/json; charset=utf-8", text.getBytes(StandardCharsets.UTF_8)); }
     private static void error(HttpExchange x, int status, String message) throws IOException { json(x, status, "{\"error\":" + quote(message) + "}"); }
     private static void deleteTree(Path path) {
-        try (var paths = Files.walk(path)) { paths.sorted(Comparator.reverseOrder()).forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException ignored) {} }); }
+        try (Stream<Path> paths = Files.walk(path)) { paths.sorted(Comparator.reverseOrder()).forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException ignored) {} }); }
         catch (IOException ignored) {}
     }
 
@@ -288,7 +324,7 @@ public final class App implements AutoCloseable {
             else if (args[i].equals("--port") && i + 1 < args.length) port = Integer.parseInt(args[++i]);
             else throw new IllegalArgumentException("用法：java -jar ppt-format-converter.jar [--port 端口] [--no-browser]");
         }
-        App app = new App(port, Path.of(System.getProperty("java.io.tmpdir")));
+        App app = new App(port, Paths.get(System.getProperty("java.io.tmpdir")));
         Runtime.getRuntime().addShutdownHook(new Thread(app::close)); app.start();
         URI url = URI.create("http://127.0.0.1:" + app.port() + "/");
         System.out.println("PPT Format Converter V1.0\n请在本机浏览器打开：" + url + "\n关闭此窗口或按 Ctrl+C 退出；退出前请下载结果。");

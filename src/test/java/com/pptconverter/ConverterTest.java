@@ -2,7 +2,6 @@ package com.pptconverter;
 
 import java.io.*;
 import java.net.*;
-import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -10,6 +9,8 @@ import java.util.function.Consumer;
 import java.util.regex.*;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.*;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
 import javax.xml.transform.*;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
@@ -17,7 +18,7 @@ import org.w3c.dom.*;
 
 /** Runnable tests without external dependencies. Throws on every failed assertion. */
 public final class ConverterTest {
-    private static final Path SAMPLE = Path.of("examples/sample-4x3.pptx");
+    private static final Path SAMPLE = Paths.get("examples/sample-4x3.pptx");
     private static Path temp;
     private static int tests;
     @FunctionalInterface interface Checked { void run() throws Exception; }
@@ -31,7 +32,7 @@ public final class ConverterTest {
             test("4:3 resize, centering and image/table/chart/group preservation", ConverterTest::geometry);
             test("layout/master inheritance remains valid", ConverterTest::inheritance);
             test("font aliases in slides, notes, charts and themes; other fonts unchanged", ConverterTest::fonts);
-            test("16:9 dimensions and coordinates unchanged", () -> unchanged(Path.of("examples/sample-16x9.pptx")));
+            test("16:9 dimensions and coordinates unchanged", () -> unchanged(Paths.get("examples/sample-16x9.pptx")));
             test("custom aspect dimensions and coordinates unchanged", ConverterTest::customAspect);
             test("corrupt input isolated, original untouched and temporary outputs removed", ConverterTest::corrupt);
             test("existing output and original overwrite refused", ConverterTest::overwrite);
@@ -44,7 +45,7 @@ public final class ConverterTest {
             test("HTTP batch, failure isolation, downloads, logs, authorization and deletion", ConverterTest::http);
             System.out.println("RESULT: " + tests + " tests passed, 0 failed, 0 skipped");
         } finally {
-            try (var paths = Files.walk(temp)) { for (Path p : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(p); }
+            try (Stream<Path> paths = Files.walk(temp)) { for (Path p : paths.sorted(Comparator.reverseOrder()).collect(Collectors.toList())) Files.deleteIfExists(p); }
         }
     }
     private static Path output() { return temp.resolve(UUID.randomUUID() + ".pptx"); }
@@ -52,7 +53,7 @@ public final class ConverterTest {
     private static Map<String, byte[]> parts(Path file) throws IOException {
         Map<String, byte[]> parts = new LinkedHashMap<>();
         try (ZipFile z = new ZipFile(file.toFile())) {
-            for (ZipEntry e : Collections.list(z.entries())) try (InputStream in = z.getInputStream(e)) { parts.put(e.getName(), in.readAllBytes()); }
+            for (ZipEntry e : Collections.list(z.entries())) try (InputStream in = z.getInputStream(e)) { parts.put(e.getName(), readAll(in)); }
         }
         return parts;
     }
@@ -67,7 +68,7 @@ public final class ConverterTest {
     private static Path packageFile(Map<String, byte[]> parts) throws IOException {
         Path path = output();
         try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(path))) {
-            for (var e : parts.entrySet()) { z.putNextEntry(new ZipEntry(e.getKey())); z.write(e.getValue()); z.closeEntry(); }
+            for (Map.Entry<String, byte[]> e : parts.entrySet()) { z.putNextEntry(new ZipEntry(e.getKey())); z.write(e.getValue()); z.closeEntry(); }
         }
         return path;
     }
@@ -116,14 +117,14 @@ public final class ConverterTest {
         if(ac.isEmpty())check(a.getTextContent().equals(b.getTextContent()),"Text content changed");
     }
     private static boolean topLevelOffset(Element e) {
-        if(!Set.of("sld","sldLayout","sldMaster").contains(e.getOwnerDocument().getDocumentElement().getLocalName()))return false;
-        Node n=e.getParentNode(); if(!(n instanceof Element x) || !x.getLocalName().equals("xfrm"))return false;
-        n=n.getParentNode(); if(n instanceof Element p && Set.of("spPr","grpSpPr").contains(p.getLocalName()))n=n.getParentNode();
-        return n!=null && n.getParentNode() instanceof Element tree && tree.getLocalName().equals("spTree");
+        if(!Arrays.asList("sld","sldLayout","sldMaster").contains(e.getOwnerDocument().getDocumentElement().getLocalName()))return false;
+        Node n=e.getParentNode(); if(!(n instanceof Element) || !((Element)n).getLocalName().equals("xfrm"))return false;
+        n=n.getParentNode(); if(n instanceof Element && Arrays.asList("spPr","grpSpPr").contains(((Element)n).getLocalName()))n=n.getParentNode();
+        return n!=null && n.getParentNode() instanceof Element && ((Element)n.getParentNode()).getLocalName().equals("spTree");
     }
     private static List<Element> children(Element e) {
         List<Element> elements=new ArrayList<>();
-        for(Node n=e.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element el)elements.add(el);
+        for(Node n=e.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element)elements.add((Element)n);
         return elements;
     }
     private static void inheritance() throws Exception {
@@ -148,7 +149,7 @@ public final class ConverterTest {
     private static void fonts() throws Exception {
         Path themed=changed("ppt/theme/theme1.xml",d->first(d,PptxConverter.A,"latin").setAttribute("typeface","Microsoft YaHei"));
         Path out=output();PptxConverter.Result r=convert(themed,out);int count=0;
-        for(var e:parts(out).entrySet())if(e.getKey().startsWith("ppt/")&&e.getKey().endsWith(".xml")){
+        for(Map.Entry<String, byte[]> e:parts(out).entrySet())if(e.getKey().startsWith("ppt/")&&e.getKey().endsWith(".xml")){
             Document d=PptxConverter.parse(e.getValue());NodeList all=d.getElementsByTagName("*");
             for(int i=0;i<all.getLength();i++){
                 String font=((Element)all.item(i)).getAttribute("typeface");
@@ -174,13 +175,13 @@ public final class ConverterTest {
         try { convert(source,out); }catch(Exception e){failed=true;check(e.getMessage().contains(expected),"Wrong error: "+e.getMessage());}
         check(failed,"Expected conversion failure");check(Arrays.equals(original,Files.readAllBytes(source)),"Original was modified");
         check(!Files.exists(out),"Partial output retained");
-        try(var files=Files.list(temp)){check(files.noneMatch(p->p.getFileName().toString().startsWith(".ppt-convert-")),"Temporary artifact left behind");}
+        try(Stream<Path> files=Files.list(temp)){check(files.noneMatch(p->p.getFileName().toString().startsWith(".ppt-convert-")),"Temporary artifact left behind");}
     }
-    private static void corrupt() throws Exception {fails(Path.of("examples/invalid.pptx"),output(),"无法打开");}
+    private static void corrupt() throws Exception {fails(Paths.get("examples/invalid.pptx"),output(),"无法打开");}
     private static void overwrite() throws Exception {
-        Path out=output();Files.writeString(out,"keep me");boolean refused=false;
+        Path out=output();Files.write(out,"keep me".getBytes(StandardCharsets.UTF_8));boolean refused=false;
         try{convert(SAMPLE,out);}catch(IOException e){refused=true;}
-        check(refused&&Files.readString(out).equals("keep me"),"Existing output overwritten");
+        check(refused&&new String(Files.readAllBytes(out),StandardCharsets.UTF_8).equals("keep me"),"Existing output overwritten");
         byte[] original=Files.readAllBytes(SAMPLE);refused=false;
         try{convert(SAMPLE,SAMPLE);}catch(IOException e){refused=true;}
         check(refused&&Arrays.equals(original,Files.readAllBytes(SAMPLE)),"Original overwritten");
@@ -211,7 +212,7 @@ public final class ConverterTest {
             Element shape=(Element)d.getElementsByTagNameNS(PptxConverter.P,"sp").item(0);
             Element alt=d.createElementNS("http://schemas.openxmlformats.org/markup-compatibility/2006","mc:AlternateContent");
             alt.setAttributeNS("http://www.w3.org/2000/xmlns/","xmlns:mc","http://schemas.openxmlformats.org/markup-compatibility/2006");
-            for(String type:List.of("Choice","Fallback")){
+            for(String type:Arrays.asList("Choice","Fallback")){
                 Element choice=d.createElementNS(alt.getNamespaceURI(),"mc:"+type);
                 if(type.equals("Choice"))choice.setAttribute("Requires","p");
                 choice.appendChild(shape.cloneNode(true));alt.appendChild(choice);
@@ -230,42 +231,73 @@ public final class ConverterTest {
         check(r.warnings().stream().anyMatch(w->w.contains("运动路径")),"Motion warning missing");
     }
 
-    private static HttpResponse<byte[]> request(HttpClient client, URI base, String path, String method, String token, byte[] body) throws Exception {
-        HttpRequest.Builder b=HttpRequest.newBuilder(base.resolve(path)).timeout(java.time.Duration.ofSeconds(20));
-        if(token!=null)b.header("X-App-Token",token);
-        return client.send(b.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body)).build(),HttpResponse.BodyHandlers.ofByteArray());
+    private static byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream out=new ByteArrayOutputStream(); byte[] buffer=new byte[8192];int n;
+        while((n=in.read(buffer))!=-1)out.write(buffer,0,n);return out.toByteArray();
     }
-    private static String body(HttpResponse<byte[]> r) { return new String(r.body(),StandardCharsets.UTF_8); }
+    private static final class Response {
+        private final int code;private final byte[] bytes;
+        Response(int code,byte[] bytes){this.code=code;this.bytes=bytes;}
+        int statusCode(){return code;}byte[] body(){return bytes;}
+    }
+    private static Response request(URI base,String path,String method,String token,byte[] data) throws Exception {
+        return request(base,path,method,token,data,null);
+    }
+    private static Response request(URI base,String path,String method,String token,byte[] data,String origin) throws Exception {
+        if(origin!=null) {
+            // Java 8 HttpURLConnection silently filters Origin. Send it on a real socket
+            // so this test actually exercises the server's cross-origin protection.
+            try(Socket socket=new Socket(base.getHost(),base.getPort())) {
+                socket.setSoTimeout(20000);
+                String raw=method+" "+path+" HTTP/1.1\r\nHost: "+base.getHost()+":"+base.getPort()+
+                    "\r\nOrigin: "+origin+"\r\nX-App-Token: "+token+"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                socket.getOutputStream().write(raw.getBytes(StandardCharsets.US_ASCII));
+                BufferedReader reader=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.US_ASCII));
+                String line=reader.readLine();check(line!=null,"No HTTP response");
+                return new Response(Integer.parseInt(line.split(" ")[1]),new byte[0]);
+            }
+        }
+        HttpURLConnection c=(HttpURLConnection)base.resolve(path).toURL().openConnection();
+        try {
+            c.setConnectTimeout(20000);c.setReadTimeout(20000);c.setRequestMethod(method);
+            if(token!=null)c.setRequestProperty("X-App-Token",token);
+            if(data!=null){c.setDoOutput(true);c.setFixedLengthStreamingMode(data.length);try(OutputStream out=c.getOutputStream()){out.write(data);}}
+            int code=c.getResponseCode();InputStream in=code>=400?c.getErrorStream():c.getInputStream();
+            if(in==null)return new Response(code,new byte[0]);
+            try(InputStream stream=in){return new Response(code,readAll(stream));}
+        } finally {c.disconnect();}
+    }
+    private static String body(Response r) { return new String(r.body(),StandardCharsets.UTF_8); }
     private static String id(String json) { Matcher m=Pattern.compile("\"id\":\"([^\"]+)\"").matcher(json);check(m.find(),"ID missing");return m.group(1); }
     private static void http() throws Exception {
         try(App app=new App(0,temp)) {
-            app.start();HttpClient client=HttpClient.newHttpClient();URI base=URI.create("http://127.0.0.1:"+app.port());
-            HttpResponse<byte[]> page=request(client,base,"/","GET",null,null);
+            app.start();URI base=URI.create("http://127.0.0.1:"+app.port());
+            Response page=request(base,"/","GET",null,null);
             check(page.statusCode()==200 && body(page).contains("开始转换"),"Web UI not served");
             Matcher m=Pattern.compile("name=\"app-token\" content=\"([^\"]+)\"").matcher(body(page));check(m.find(),"No session token");String token=m.group(1);
-            check(request(client,base,"/api/batches","POST",null,null).statusCode()==403,"Unauthenticated API accepted");
-            var evil=client.send(HttpRequest.newBuilder(base.resolve("/api/batches")).header("Origin","https://evil.example").header("X-App-Token",token).POST(HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofByteArray());
+            check(request(base,"/api/batches","POST",null,null).statusCode()==403,"Unauthenticated API accepted");
+            Response evil=request(base,"/api/batches","POST",token,new byte[0],"https://evil.example");
             check(evil.statusCode()==403,"Cross-origin request accepted");
-            var created=request(client,base,"/api/batches","POST",token,null);check(created.statusCode()==201,"Create failed");String batch=id(body(created));String route="/api/batches/"+batch;
+            Response created=request(base,"/api/batches","POST",token,null);check(created.statusCode()==201,"Create failed");String batch=id(body(created));String route="/api/batches/"+batch;
             String unicode="中文样例 & \".pptx";
-            String encoded=URLEncoder.encode(unicode,StandardCharsets.UTF_8);
-            var file=request(client,base,route+"/files?name="+encoded,"POST",token,Files.readAllBytes(SAMPLE));check(file.statusCode()==202,"Upload failed");String fileId=id(body(file));
-            check(request(client,base,route+"/files?name="+encoded,"POST",token,Files.readAllBytes(SAMPLE)).statusCode()==202,"Duplicate-name upload failed");
-            check(request(client,base,route+"/files?name=invalid.pptx","POST",token,Files.readAllBytes(Path.of("examples/invalid.pptx"))).statusCode()==202,"Invalid input not queued");
-            check(request(client,base,route+"/files?name=empty.pptx","POST",token,new byte[0]).statusCode()==400,"Empty input accepted");
+            String encoded=URLEncoder.encode(unicode,"UTF-8");
+            Response file=request(base,route+"/files?name="+encoded,"POST",token,Files.readAllBytes(SAMPLE));check(file.statusCode()==202,"Upload failed");String fileId=id(body(file));
+            check(request(base,route+"/files?name="+encoded,"POST",token,Files.readAllBytes(SAMPLE)).statusCode()==202,"Duplicate-name upload failed");
+            check(request(base,route+"/files?name=invalid.pptx","POST",token,Files.readAllBytes(Paths.get("examples/invalid.pptx"))).statusCode()==202,"Invalid input not queued");
+            check(request(base,route+"/files?name=empty.pptx","POST",token,new byte[0]).statusCode()==400,"Empty input accepted");
             String status="";
             long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);
-            while(System.nanoTime()<until){status=body(request(client,base,route,"GET",token,null));if(status.contains("\"complete\":true"))break;Thread.sleep(50);}
+            while(System.nanoTime()<until){status=body(request(base,route,"GET",token,null));if(status.contains("\"complete\":true"))break;Thread.sleep(50);}
             check(status.contains("\"complete\":true"),"Batch did not finish");
             check(status.split("\"status\":\"done\"",-1).length-1==2 && status.split("\"status\":\"failed\"",-1).length-1==2,"Batch failure isolation broken: "+status);
-            var download=request(client,base,route+"/files/"+fileId+"/download","GET",token,null);check(download.statusCode()==200,"Single download failed");
+            Response download=request(base,route+"/files/"+fileId+"/download","GET",token,null);check(download.statusCode()==200,"Single download failed");
             Path downloaded=output();Files.write(downloaded,download.body());check(parts(downloaded).containsKey("ppt/charts/chart1.xml"),"Chart lost in download");
-            var archive=request(client,base,route+"/download","GET",token,null);check(archive.statusCode()==200,"Batch download failed");
-            Set<String> entries=new HashSet<>();try(ZipInputStream z=new ZipInputStream(new ByteArrayInputStream(archive.body()))){ZipEntry e;while((e=z.getNextEntry())!=null){check(entries.add(e.getName()),"Duplicate ZIP name");z.transferTo(OutputStream.nullOutputStream());}}
+            Response archive=request(base,route+"/download","GET",token,null);check(archive.statusCode()==200,"Batch download failed");
+            Set<String> entries=new HashSet<>();try(ZipInputStream z=new ZipInputStream(new ByteArrayInputStream(archive.body()))){ZipEntry e;while((e=z.getNextEntry())!=null){check(entries.add(e.getName()),"Duplicate ZIP name");readAll(z);}}
             check(entries.size()==3 && entries.contains("conversion-log.txt"),"ZIP results/log missing");
-            var log=request(client,base,route+"/log","GET",token,null);check(log.statusCode()==200&&body(log).contains("转换失败")&&body(log).contains("完成："),"Conversion log incomplete");
-            check(request(client,base,route,"DELETE",token,null).statusCode()==200,"Delete failed");
-            check(request(client,base,route,"GET",token,null).statusCode()==404,"Deleted batch still available");
+            Response log=request(base,route+"/log","GET",token,null);check(log.statusCode()==200&&body(log).contains("转换失败")&&body(log).contains("完成："),"Conversion log incomplete");
+            check(request(base,route,"DELETE",token,null).statusCode()==200,"Delete failed");
+            check(request(base,route,"GET",token,null).statusCode()==404,"Deleted batch still available");
         }
     }
 }

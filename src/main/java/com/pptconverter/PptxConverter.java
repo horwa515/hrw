@@ -21,8 +21,25 @@ public final class PptxConverter {
     static final String A = "http://schemas.openxmlformats.org/drawingml/2006/main";
     private static final String STRICT_P = "http://purl.oclc.org/ooxml/presentationml/main";
 
-    public record Result(long oldWidth, long height, long newWidth, boolean resized,
-                         int movedObjects, int replacedFonts, List<String> warnings) {}
+    public static final class Result {
+        private final long oldWidth, height, newWidth;
+        private final boolean resized;
+        private final int movedObjects, replacedFonts;
+        private final List<String> warnings;
+        Result(long oldWidth, long height, long newWidth, boolean resized,
+               int movedObjects, int replacedFonts, List<String> warnings) {
+            this.oldWidth = oldWidth; this.height = height; this.newWidth = newWidth;
+            this.resized = resized; this.movedObjects = movedObjects; this.replacedFonts = replacedFonts;
+            this.warnings = Collections.unmodifiableList(new ArrayList<String>(warnings));
+        }
+        public long oldWidth() { return oldWidth; }
+        public long height() { return height; }
+        public long newWidth() { return newWidth; }
+        public boolean resized() { return resized; }
+        public int movedObjects() { return movedObjects; }
+        public int replacedFonts() { return replacedFonts; }
+        public List<String> warnings() { return warnings; }
+    }
 
     public Result convert(Path input, Path output, IntConsumer progress) throws Exception {
         if (!input.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pptx"))
@@ -132,7 +149,7 @@ public final class PptxConverter {
             // No REPLACE_EXISTING: an existing output is never overwritten.
             Files.move(temporary, output);
             progress.accept(100);
-            return new Result(width, height, newWidth, resized, moved, fonts, List.copyOf(warnings));
+            return new Result(width, height, newWidth, resized, moved, fonts, warnings);
         } catch (ZipException ex) {
             throw new IOException("无法打开 PPTX：文件损坏、已加密，或不是标准 ZIP 格式。", ex);
         } finally {
@@ -142,7 +159,7 @@ public final class PptxConverter {
 
     private static boolean isSlidePart(Document doc) {
         Element root = doc.getDocumentElement();
-        return P.equals(root.getNamespaceURI()) && Set.of("sld", "sldLayout", "sldMaster").contains(root.getLocalName());
+        return P.equals(root.getNamespaceURI()) && Arrays.asList("sld", "sldLayout", "sldMaster").contains(root.getLocalName());
     }
 
     private static int shiftTopLevel(Document doc, long delta, List<String> warnings, String part) throws IOException {
@@ -151,7 +168,8 @@ public final class PptxConverter {
         for (int i = 0; i < trees.getLength(); i++) {
             Element tree = (Element)trees.item(i);
             for (Node node = tree.getFirstChild(); node != null; node = node.getNextSibling()) {
-                if (!(node instanceof Element shape)) continue;
+                if (!(node instanceof Element)) continue;
+                Element shape = (Element)node;
                 String kind = shape.getLocalName();
                 if (kind.equals("nvGrpSpPr") || kind.equals("grpSpPr") || kind.equals("extLst")) continue;
                 if (!P.equals(shape.getNamespaceURI())) {
@@ -159,7 +177,7 @@ public final class PptxConverter {
                     moved += shiftAlternatives(shape, delta, warnings, part);
                     continue;
                 }
-                if (!Set.of("sp", "pic", "cxnSp", "grpSp", "graphicFrame", "contentPart").contains(kind)) {
+                if (!Arrays.asList("sp", "pic", "cxnSp", "grpSp", "graphicFrame", "contentPart").contains(kind)) {
                     warnings.add(part + "：保留未识别对象 " + kind + "，无法保证居中。");
                     continue;
                 }
@@ -180,8 +198,9 @@ public final class PptxConverter {
     private static int shiftAlternatives(Element wrapper, long delta, List<String> warnings, String part) throws IOException {
         int moved = 0;
         for (Node n = wrapper.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (!(n instanceof Element e)) continue;
-            if (P.equals(e.getNamespaceURI()) && Set.of("sp", "pic", "cxnSp", "grpSp", "graphicFrame").contains(e.getLocalName())) {
+            if (!(n instanceof Element)) continue;
+            Element e = (Element)n;
+            if (P.equals(e.getNamespaceURI()) && Arrays.asList("sp", "pic", "cxnSp", "grpSp", "graphicFrame").contains(e.getLocalName())) {
                 Element t = findTransform(e);
                 if (t != null && shiftOffset(t, delta)) moved++;
                 else warnings.add(part + "：替代内容对象无法确定坐标，原样保留。");
@@ -194,11 +213,12 @@ public final class PptxConverter {
 
     private static Element findTransform(Element shape) {
         for (Node n = shape.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (!(n instanceof Element e)) continue;
+            if (!(n instanceof Element)) continue;
+            Element e = (Element)n;
             if (e.getLocalName().equals("xfrm")) return e;
             if (e.getLocalName().equals("spPr") || e.getLocalName().equals("grpSpPr")) {
                 for (Node c = e.getFirstChild(); c != null; c = c.getNextSibling())
-                    if (c instanceof Element x && x.getLocalName().equals("xfrm")) return x;
+                    if (c instanceof Element && ((Element)c).getLocalName().equals("xfrm")) return (Element)c;
             }
         }
         return null;
@@ -206,7 +226,8 @@ public final class PptxConverter {
 
     private static boolean shiftOffset(Element transform, long delta) throws IOException {
         for (Node n = transform.getFirstChild(); n != null; n = n.getNextSibling()) {
-            if (n instanceof Element e && e.getLocalName().equals("off")) {
+            if (n instanceof Element && ((Element)n).getLocalName().equals("off")) {
+                Element e = (Element)n;
                 try { e.setAttribute("x", Long.toString(Math.addExact(Long.parseLong(e.getAttribute("x")), delta))); }
                 catch (NumberFormatException | ArithmeticException ex) { throw new IOException("对象水平坐标无效。", ex); }
                 return true;
@@ -222,7 +243,7 @@ public final class PptxConverter {
             Element e = (Element)all.item(i);
             // Resource names must continue to match the retained embedded font binaries.
             if (P.equals(e.getNamespaceURI()) && e.getLocalName().equals("font") &&
-                e.getParentNode() instanceof Element parent && parent.getLocalName().equals("embeddedFont")) continue;
+                e.getParentNode() instanceof Element && ((Element)e.getParentNode()).getLocalName().equals("embeddedFont")) continue;
             if (e.hasAttribute("typeface")) {
                 String font = e.getAttribute("typeface");
                 if (font.equalsIgnoreCase("Microsoft YaHei") || font.equals("微软雅黑")) {

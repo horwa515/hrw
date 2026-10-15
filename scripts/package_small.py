@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='small-', dir=ROOT / 'dist') as stage:
     shutil.copy2(jar, app / jar.name)
     (app / 'Start.cmd').write_bytes((ROOT / 'Start.cmd').read_text().replace('\r\n','\n').replace('\n','\r\n').encode('ascii'))
     if args.java_required:
-        text = '此精简包不包含 Java。工作电脑必须已经安装 Java 17+，否则无法启动。\n双击 Start.cmd。详细功能和限制见 README.md。\n'
+        text = '此精简包不包含 Java。工作电脑必须已经安装 Java 8+，否则无法启动。\n双击 Start.cmd。详细功能和限制见 README.md。\n'
     else:
         text = (ROOT / 'docs/Windows使用说明.txt').read_text() + '\n此小型离线包只包含应用需要的 Java 模块，转换功能不减少。\n'
     (app / '使用说明.txt').write_text(text, encoding='utf-8-sig')

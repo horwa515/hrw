@@ -4,14 +4,19 @@ Java 本地 PPTX 转换工具。双击启动后打开中文网页，选择或拖
 
 ## 直接下载（普通用户选第一个）
 
-- **[推荐：小型 Windows 离线 ZIP（约 17 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64-Small.zip)**：自带最小 Java 运行时，完整解压后双击 `Start.cmd`，不减少转换功能。邮件编码后约 23.3 MB，通常适合 25 MB 邮件限制；小型包不带示例 PPT，示例可从仓库或源码包获取。
-- [仅程序精简 ZIP（约 40 KB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Java-required.zip)：工作电脑**必须已安装 Java 17+**。
+- **[公司电脑已有 Java 8：下载 Java 8 专用包（约 70 KB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-Java8.zip)**：适配 Windows 10 x64、现有 Java 8（含 1.8.0_201）；无需安装或升级 Java。包含启动脚本、说明和示例 PPT，邮件附件远小于 12 MB。
+- [电脑没有 Java：小型 Windows 离线 ZIP（约 17 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64-Small.zip)：自带最小 Java 运行时，完整解压后双击 `Start.cmd`。邮件编码后约 23.3 MB，通常适合 25 MB 邮件限制。
+- [仅程序精简 ZIP（约 40 KB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Java-required.zip)：工作电脑**必须已安装 Java 8+**，不附带示例。
 - [原始完整运行时 ZIP（约 49 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64.zip)：旧版便携包，仍可运行，但不推荐用于邮件附件。
 - [完整源码 ZIP](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Source.zip)：给开发者使用。
 
 若直接下载链接没有开始下载，请先登录 GitHub，再打开 [downloads 文件夹](https://github.com/horwa515/hrw/tree/main/downloads)，点击对应 ZIP，使用文件页右上角的下载按钮（Download raw file）下载。不要点击仓库的 “Code → Download ZIP” 来代替自带运行时的离线程序包。
 
 ## Windows 用户：解压、双击、转换
+
+**已有 Java 8（例如公司提供的 1.8.0_201）**：下载上面的 Java 8 专用包，完整解压后打开 `PPTFormatConverter-Java8` 文件夹，双击 `Start.cmd`。不需要安装 JDK、不需要配置 JAVA_HOME。启动脚本优先使用系统 PATH 中的 Java。详细步骤见 [Java 8 使用说明](docs/Java8使用说明.txt)。建议用 Edge / Chrome / Firefox，应用不支持旧 Internet Explorer。
+
+**电脑没有 Java**，使用自带运行时的小型离线包：
 
 1. 下载推荐的 `PPTFormatConverter-1.0-Windows-x64-Small.zip`，**完整解压**到任意可写目录。不要直接在 ZIP 内启动。
 2. 打开解压后的 `PPTFormatConverter` 文件夹，双击 **`Start.cmd`**。离线包自带 Eclipse Temurin Java 21 运行时，无需配置 Java。
@@ -50,7 +55,7 @@ Java 本地 PPTX 转换工具。双击启动后打开中文网页，选择或拖
 
 ## 构建与运行（开发者）
 
-运行 JAR 需要 Java **17+**；从源码构建需要 **JDK 17+**。没有 Maven、Gradle 或第三方 Java 依赖，因此安装好 JDK 后，构建和测试均可离线运行。
+运行新版 JAR 需要 Java **8+**，已有 Java 8 JRE 即可；从源码构建需要 **JDK 8+**。没有 Maven、Gradle 或第三方 Java 依赖，因此安装好 JDK 后，构建和测试均可离线运行。JDK 9+ 编译时使用 `--release 8`，JDK 8 编译时使用 `-source 8 -target 8`。
 
 Windows：
 
@@ -68,7 +73,7 @@ bash build.sh
 bash start.sh
 ```
 
-构建脚本编译 Java 17 字节码、打包网页资源、运行测试，生成 `dist/ppt-format-converter.jar`。直接运行：
+构建脚本编译 Java 8 字节码（class major version 52）、打包网页资源、运行测试，生成 `dist/ppt-format-converter.jar`。直接运行：
 
 ```sh
 java -jar dist/ppt-format-converter.jar
@@ -90,13 +95,21 @@ package-windows.cmd
 
 输出 `dist\windows\PPTFormatConverter\PPTFormatConverter.exe`。复制**完整应用目录**即可离线部署，不能只复制 EXE。`jpackage --type app-image` 不需要 WiX；程序保留控制台窗口，方便查看启动地址和停止服务。这一步依赖 Windows JDK，Linux 不能生成或验证 Windows 原生 EXE。
 
+### Java 8 公司电脑包（最小交付）
+
+```sh
+python scripts/package_java8.py
+```
+
+先运行构建脚本。打包脚本检查 JAR 中所有类都是 Java 8 字节码（52），再打包启动脚本、UTF-8 使用说明和一个示例 PPT；不附带 Java 运行时。现有 Oracle Java 8u201 的 Windows 公司电脑可直接使用，无需改变系统 Java。实际测试环境为 Linux AdoptOpenJDK 8u202；尚未在 Windows Oracle 8u201 上执行，需用户验收启动及 PowerPoint 排版。
+
 ### 在任意构建机生成自带运行时的 Windows 便携 ZIP
 
 推荐的小型离线包使用官方 Windows JDK ZIP 和匹配的官方 SHA-256 文件，经同主版本的 JDK `jlink` 生成运行时。仅保留 `java.base,java.xml,jdk.httpserver`；系统浏览器由操作系统命令启动，应用不依赖 `java.desktop`。采用共享字符串处理后再 ZIP 压缩，省去用于 JNI 开发的 `.lib` 链接库，保留运行必需的 DLL 和许可证。Windows 包可在 Linux 上通过 Windows jmods 交叉链接，但仍需 Windows 主机验收启动。
 
 ```sh
 python scripts/package_small.py --windows-jdk /path/to/official-windows-jdk.zip --checksum-file /path/to/official-windows-jdk.zip.sha256.txt --jlink /path/to/jdk21/bin/jlink
-# 不带运行时的约 40 KB 版本（使用者必须有 Java 17+）
+# 不带运行时的约 40 KB 版本（使用者必须有 Java 8+）
 python scripts/package_small.py --java-required
 ```
 

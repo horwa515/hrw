@@ -1,0 +1,23 @@
+PPT Format Converter V1.0 — 公司 Java 8 环境版
+
+适用环境：Windows 10、64 位、已有 Java 8（含 1.8.0_201）或更高版本。
+这个包不附带 Java，不需要安装新 Java，也不需要修改公司的 Java 设置。
+
+1. 下载 PPTFormatConverter-1.0-Windows-Java8.zip，通过邮件发送该 ZIP 即可。
+2. 将收到的 ZIP 完整解压到一个文件夹。不要在压缩包内直接运行。
+3. 打开 PPTFormatConverter-Java8 文件夹，双击 Start.cmd。
+4. 保持程序窗口打开，浏览器将显示转换页面。
+5. 如果浏览器没有打开，将窗口中的 http://127.0.0.1:数字/ 地址复制到 Edge 浏览器。
+6. 选择自己的 PPTX，点击“开始转换”，然后下载结果。
+7. 可先上传 examples 文件夹中的 sample-4x3.pptx 做一次测试。
+8. 下载完成再关闭程序窗口。关闭窗口会清理本次临时转换文件。
+
+运行时不需要联网，不需要管理员权限；无需安装 JDK 或 PowerPoint。
+编辑、检查输出可使用 PowerPoint。原文件不会被覆盖。
+只支持 .pptx；旧 .ppt 请先在 PowerPoint 中另存为 .pptx。
+保留原高度和对象尺寸，将 4:3 内容水平居中到 16:9。
+微软雅黑 / Microsoft YaHei 替换为 Arial；中文由系统回退字体显示，换行可能变化。
+背景填充、运动路径动画和高级对象建议在 PowerPoint 中人工复查。
+
+如启动报错：保持窗口打开，拍下错误文字，方便排查。
+已在 Linux Java 8u202 实际运行全部测试及网页流程；Windows Oracle 8u201 的启动和 PowerPoint 显示仍需在公司电脑确认。
