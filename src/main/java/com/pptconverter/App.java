@@ -1,7 +1,6 @@
 package com.pptconverter;
 
 import com.sun.net.httpserver.*;
-import java.awt.Desktop;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -295,8 +294,10 @@ public final class App implements AutoCloseable {
         System.out.println("PPT Format Converter V1.0\n请在本机浏览器打开：" + url + "\n关闭此窗口或按 Ctrl+C 退出；退出前请下载结果。");
         if (browser) {
             try {
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) Desktop.getDesktop().browse(url);
-                else if (System.getProperty("os.name").startsWith("Windows")) new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url.toString()).start();
+                String os = System.getProperty("os.name");
+                if (os.startsWith("Windows")) new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url.toString()).start();
+                else if (os.startsWith("Mac")) new ProcessBuilder("open", url.toString()).start();
+                else new ProcessBuilder("xdg-open", url.toString()).start();
             } catch (Exception e) { System.out.println("无法自动打开浏览器，请复制上述地址到浏览器。"); }
         }
     }

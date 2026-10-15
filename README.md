@@ -4,14 +4,16 @@ Java 本地 PPTX 转换工具。双击启动后打开中文网页，选择或拖
 
 ## 直接下载（普通用户选第一个）
 
-- **[Windows 离线程序 ZIP（约 47 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64.zip)**：包含 Java，完整解压后双击 `Start.cmd`。
+- **[推荐：小型 Windows 离线 ZIP（约 17 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64-Small.zip)**：自带最小 Java 运行时，完整解压后双击 `Start.cmd`，不减少转换功能。邮件编码后约 23.3 MB，通常适合 25 MB 邮件限制；小型包不带示例 PPT，示例可从仓库或源码包获取。
+- [仅程序精简 ZIP（约 40 KB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Java-required.zip)：工作电脑**必须已安装 Java 17+**。
+- [原始完整运行时 ZIP（约 49 MB）](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Windows-x64.zip)：旧版便携包，仍可运行，但不推荐用于邮件附件。
 - [完整源码 ZIP](https://github.com/horwa515/hrw/raw/refs/heads/main/downloads/PPTFormatConverter-1.0-Source.zip)：给开发者使用。
 
 若直接下载链接没有开始下载，请先登录 GitHub，再打开 [downloads 文件夹](https://github.com/horwa515/hrw/tree/main/downloads)，点击对应 ZIP，使用文件页右上角的下载按钮（Download raw file）下载。不要点击仓库的 “Code → Download ZIP” 来代替自带运行时的离线程序包。
 
 ## Windows 用户：解压、双击、转换
 
-1. 下载 `PPTFormatConverter-1.0-Windows-x64.zip`，**完整解压**到任意可写目录。不要直接在 ZIP 内启动。
+1. 下载推荐的 `PPTFormatConverter-1.0-Windows-x64-Small.zip`，**完整解压**到任意可写目录。不要直接在 ZIP 内启动。
 2. 打开解压后的 `PPTFormatConverter` 文件夹，双击 **`Start.cmd`**。离线包自带 Eclipse Temurin Java 21 运行时，无需配置 Java。
 3. 浏览器会自动打开转换页面。如果没有打开，将程序窗口中的地址复制到 Edge / Chrome / Firefox。
 4. 点击“选择文件”或拖入一个或多个 `.pptx`，点击“开始转换”。
@@ -89,6 +91,16 @@ package-windows.cmd
 输出 `dist\windows\PPTFormatConverter\PPTFormatConverter.exe`。复制**完整应用目录**即可离线部署，不能只复制 EXE。`jpackage --type app-image` 不需要 WiX；程序保留控制台窗口，方便查看启动地址和停止服务。这一步依赖 Windows JDK，Linux 不能生成或验证 Windows 原生 EXE。
 
 ### 在任意构建机生成自带运行时的 Windows 便携 ZIP
+
+推荐的小型离线包使用官方 Windows JDK ZIP 和匹配的官方 SHA-256 文件，经同主版本的 JDK `jlink` 生成运行时。仅保留 `java.base,java.xml,jdk.httpserver`；系统浏览器由操作系统命令启动，应用不依赖 `java.desktop`。采用共享字符串处理后再 ZIP 压缩，省去用于 JNI 开发的 `.lib` 链接库，保留运行必需的 DLL 和许可证。Windows 包可在 Linux 上通过 Windows jmods 交叉链接，但仍需 Windows 主机验收启动。
+
+```sh
+python scripts/package_small.py --windows-jdk /path/to/official-windows-jdk.zip --checksum-file /path/to/official-windows-jdk.zip.sha256.txt --jlink /path/to/jdk21/bin/jlink
+# 不带运行时的约 40 KB 版本（使用者必须有 Java 17+）
+python scripts/package_small.py --java-required
+```
+
+`jdeps --print-module-deps dist/ppt-format-converter.jar` 应输出上述三个模块；应用引入新模块后，需要同步更新打包模块清单。打包脚本拒绝覆盖已有输出。
 
 先构建 JAR，然后从 [Temurin 官方 Windows x64 JRE 发布页](https://github.com/adoptium/temurin21-binaries/releases) 下载当前受支持 Java 21 的 ZIP 及对应 `.sha256.txt`（打包需要 Python 3.8+，无额外 Python 依赖）：
 
